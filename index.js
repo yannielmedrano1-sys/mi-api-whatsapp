@@ -1,6 +1,6 @@
 import express from 'express';
 import yts from 'yt-search';
-import ytdl from '@distube/ytdl-core';
+import axios from 'axios';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,37 +40,38 @@ app.get('/api/ytinfo', async (req, res) => {
     }
 });
 
+// Endpoint ytmp3 ultra-optimizado usando un extractor externo estable
 app.get('/api/ytmp3', async (req, res) => {
     const videoUrl = req.query.query;
-    if (!videoUrl || !ytdl.validateURL(videoUrl)) {
-        return res.status(400).json({ status: false, message: 'URL de YouTube inválida o faltante.' });
+    if (!videoUrl) {
+        return res.status(400).json({ status: false, message: 'URL de YouTube faltante.' });
     }
 
     try {
-        // Opciones para sortear un poco el bloqueo de YouTube en data centers
-        const info = await ytdl.getInfo(videoUrl, {
-            requestOptions: {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
+        // Usamos un servicio público y rápido para extraer el enlace de audio sin bloqueos de IP
+        const response = await axios.post('https://co.wuk.sh/api/json', {
+            url: videoUrl,
+            isAudioOnly: true,
+            downloadMode: 'audio'
+        }, {
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
             }
         });
 
-        const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
-
-        if (!format || !format.url) {
-            return res.status(404).json({ status: false, message: 'No se encontró un formato de audio válido.' });
+        if (response.data && (response.data.url || response.data.picker)) {
+            const downloadLink = response.data.url || response.data.picker[0].url;
+            return res.json({
+                status: true,
+                downloadUrl: downloadLink
+            });
         }
 
-        res.json({
-            status: true,
-            downloadUrl: format.url
-        });
-
+        res.json({ status: false, message: 'No se pudo procesar el audio con el extractor.' });
     } catch (error) {
-        console.error('Error detallado en ytmp3:', error.message);
-        // Devolvemos un JSON limpio con status 200 o 400 para que el bot no tire error 500 crudo
-        res.json({ status: false, message: 'YouTube bloqueó la petición en este servidor: ' + error.message });
+        console.error('Error en ytmp3 alternativo:', error.message);
+        res.json({ status: false, message: 'Error al extraer el audio del video.' });
     }
 });
 
