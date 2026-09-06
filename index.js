@@ -47,17 +47,21 @@ app.get('/api/ytmp3', async (req, res) => {
     }
 
     try {
-        // Opciones avanzadas para evitar el bloqueo de YouTube en Render
-        const agent = ytdl.createAgent(JSON.parse(process.env.YT_COOKIE || '[]')); // Por si acaso usas cookies luego, si no, usa opciones base
-        
-        const info = await ytdl.getInfo(videoUrl);
+        // Opciones para sortear un poco el bloqueo de YouTube en data centers
+        const info = await ytdl.getInfo(videoUrl, {
+            requestOptions: {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+            }
+        });
+
         const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
 
         if (!format || !format.url) {
-            return res.status(500).json({ status: false, message: 'No se encontró un formato de audio válido.' });
+            return res.status(404).json({ status: false, message: 'No se encontró un formato de audio válido.' });
         }
 
-        // Redirigir directamente al stream limpio de YouTube o mandarlo por buffer
         res.json({
             status: true,
             downloadUrl: format.url
@@ -65,7 +69,8 @@ app.get('/api/ytmp3', async (req, res) => {
 
     } catch (error) {
         console.error('Error detallado en ytmp3:', error.message);
-        res.status(500).json({ status: false, message: 'Error al extraer el audio del video.' });
+        // Devolvemos un JSON limpio con status 200 o 400 para que el bot no tire error 500 crudo
+        res.json({ status: false, message: 'YouTube bloqueó la petición en este servidor: ' + error.message });
     }
 });
 
